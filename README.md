@@ -16,6 +16,9 @@ macro search
 - fixed_arc training
 - aux_heads
 - lr_cosine
+- test data
+- multi gpu
+- save model_param
 
 ## Prerequisites
 

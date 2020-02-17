@@ -77,10 +77,6 @@ class Model(tf.Module):
     if images["valid"] is not None:
       self.num_valid_examples = np.shape(images["valid"])[0]
       self.num_valid_batches = ((self.num_valid_examples + self.eval_batch_size - 1) // self.eval_batch_size)
-      # images["valid_original"] = np.copy(images["valid"])
-      # labels["valid_original"] = np.copy(labels["valid"])
-      # if self.data_format == "NCHW":
-      #   images["valid"] = np.transpose(images["valid"], [0, 3, 1, 2])
       self.valid_shuffle_dataloader = self.create_loader((images['valid'], labels['valid']),
                                                  self.num_valid_examples, self.eval_batch_size)
 
@@ -123,16 +119,16 @@ class Model(tf.Module):
     if self.augment:
       x = tf.image.random_crop(x, [32, 32, 3], seed=self.seed)
       x = tf.image.random_flip_left_right(x, seed=self.seed)
-      # if self.cutout_size is not None:
-      #   mask = tf.ones([self.cutout_size, self.cutout_size], dtype=tf.int32)
-      #   start = tf.random_uniform([2], minval=0, maxval=32, dtype=tf.int32)
-      #   mask = tf.pad(mask, [[self.cutout_size + start[0], 32 - start[0]],
-      #                        [self.cutout_size + start[1], 32 - start[1]]])
-      #   mask = mask[self.cutout_size: self.cutout_size + 32,
-      #               self.cutout_size: self.cutout_size + 32]
-      #   mask = tf.reshape(mask, [32, 32, 1])
-      #   mask = tf.tile(mask, [1, 1, 3])
-      #   x = tf.where(tf.equal(mask, 0), x=x, y=tf.zeros_like(x))
+      if self.cutout_size is not None:
+        mask = tf.ones([self.cutout_size, self.cutout_size], dtype=tf.int32)
+        start = tf.random_uniform([2], minval=0, maxval=32, dtype=tf.int32)
+        mask = tf.pad(mask, [[self.cutout_size + start[0], 32 - start[0]],
+                             [self.cutout_size + start[1], 32 - start[1]]])
+        mask = mask[self.cutout_size: self.cutout_size + 32,
+                    self.cutout_size: self.cutout_size + 32]
+        mask = tf.reshape(mask, [32, 32, 1])
+        mask = tf.tile(mask, [1, 1, 3])
+        x = tf.where(tf.equal(mask, 0), x=x, y=tf.zeros_like(x))
     if self.data_format == "NCHW":
       x = tf.transpose(x, [2, 0, 1])
     return x, y
@@ -178,7 +174,7 @@ class Model(tf.Module):
     print ("{}_accuracy: {:<6.4f}".format(
       eval_set, float(total_acc) / total_exp))
 
-  def _build_train(self):
+  def _build_train(self, img, label, step):
     print ("Build train graph")
     logits = self._model(self.x_train, True)
     log_probs = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -216,7 +212,7 @@ class Model(tf.Module):
       num_aggregate=self.num_aggregate,
       num_replicas=self.num_replicas)
 
-  def _build_valid(self):
+  def _build_valid(self, sample_arc):
     if self.x_valid is not None:
       print ("-" * 80)
       print( "Build valid graph")
@@ -237,7 +233,7 @@ class Model(tf.Module):
     self.test_acc = tf.to_int32(self.test_acc)
     self.test_acc = tf.reduce_sum(self.test_acc)
 
-  def build_valid_rl(self, shuffle=False):
+  def build_valid_rl(self, sample_arc, shuffle=False):
     print ("-" * 80)
     print ("Build valid graph on shuffled data")
     with tf.device("/cpu:0"):
@@ -276,5 +272,5 @@ class Model(tf.Module):
     self.valid_shuffle_acc = tf.to_int32(self.valid_shuffle_acc)
     self.valid_shuffle_acc = tf.reduce_sum(self.valid_shuffle_acc)
 
-  def _model(self, images, is_training, reuse=None):
+  def _model(self, images, is_training):
     raise NotImplementedError("Abstract method")

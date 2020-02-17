@@ -161,7 +161,6 @@ class GeneralController(tf.Module):
                                dtype=tf.float32)
 
     for layer_id in range(0, self.num_layers):
-      timetmp = time.time()
       if self.search_whole_channels:
         timetmp0 = time.time()
         next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
@@ -173,8 +172,6 @@ class GeneralController(tf.Module):
         if self.tanh_constant is not None:
           logit = self.tanh_constant * tf.tanh(logit)
         if self.search_for == "macro" or self.search_for == "branch":
-          # branch_id = tf.multinomial(logit, 1)   # 从multinomial分布中采样，样本个数是num_samples，每个样本被采样的概率由logits给出
-          # branch_id = tf.to_int32(branch_id)
           branch_id = tf.random.categorical(logit, 1, dtype=tf.int32)
           branch_id = tf.reshape(branch_id, [1])
         elif self.search_for == "connection":
@@ -230,12 +227,10 @@ class GeneralController(tf.Module):
           entropys.append(entropy)
           inputs = tf.nn.embedding_lookup(self.w_emb["count"][branch_id], count)
 
-      endtime = time.time() - timetmp
-      timetmp = time.time()
       next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)  # TODO w_lstm没有更新
       prev_c, prev_h = next_c, next_h
 
-      if layer_id > 0:   # 确定下个细胞的输入
+      if layer_id > 0:
         # anchors，w_attn_2，v_attn只有在这里用   # anchors包含了所有输出
         query = tf.concat(anchors_w_1, axis=0)
         query = tf.tanh(query + tf.matmul(next_h[-1], self.w_attn_2))
@@ -246,8 +241,6 @@ class GeneralController(tf.Module):
         if self.tanh_constant is not None:
           logit = self.tanh_constant * tf.tanh(logit)
 
-        # skip = tf.multinomial(logit, 1)
-        # skip = tf.to_int32(skip)
         skip = tf.random.categorical(logit, 1, dtype=tf.int32)
         skip = tf.reshape(skip, [layer_id])  # TODO 直接展成layer_id个0/1？
         arc_seq.append(skip)
@@ -275,8 +268,6 @@ class GeneralController(tf.Module):
 
       anchors.append(next_h[-1])   # anchors包含了所有输出
       anchors_w_1.append(tf.matmul(next_h[-1], self.w_attn_1))
-      endtime1 = time.time() - timetmp
-      a = 1
 
     arc_seq = tf.concat(arc_seq, axis=0)
     self.sample_arc = tf.reshape(arc_seq, [-1])
@@ -310,12 +301,6 @@ class GeneralController(tf.Module):
         self.reward += self.entropy_weight * self.sample_entropy
 
       self.sample_log_prob = tf.reduce_sum(self.sample_log_prob)
-      # tf.assign_sub为更新baseline
-
-      # with tf.control_dependencies([baseline_update]):
-      #   self.reward = tf.identity(self.reward)
-      #   # y = tf.identity(x)是一个op操作表示将x的值赋予y。y = x只是一个内存拷贝，并不是一个op
-
       self.loss = self.sample_log_prob * (self.reward - self.baseline)
       self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - self.reward))
 
@@ -333,67 +318,15 @@ class GeneralController(tf.Module):
     if self.l2_reg > 0:
       l2_losses = []
       for var in self.trainable_variables:
-        l2_losses.append(tf.reduce_sum(var ** 2))  # TODO trainable_variables中没有反卷积参数
+        l2_losses.append(tf.reduce_sum(var ** 2))
       l2_loss = tf.add_n(l2_losses)
       self.loss += self.l2_reg * l2_loss
 
     # compute gradients and update variables
     gradients = tape.gradient(self.loss, self.trainable_variables)
-
-    # ===================
-    # grads = tf.gradients(loss, tf_variables)   # 只在CPU算很长时间
-    # grad_norm = tf.linalg.global_norm(gradients)
-    # grad_norms = {}
-    # for v, g in zip(tf_variables, grads):
-    #   if v is None or g is None:
-    #     continue
-    #   if isinstance(g, tf.IndexedSlices):
-    #     grad_norms[v.name] = tf.sqrt(tf.reduce_sum(g.values ** 2))
-    #   else:
-    #     grad_norms[v.name] = tf.sqrt(tf.reduce_sum(g ** 2))
-
-    # if self.clip_mode is not None:
-    #   assert self.grad_bound is not None, "Need grad_bound to clip gradients."
-    #   if self.clip_mode == "global":
-    #     gradients, _ = tf.clip_by_global_norm(gradients, self.grad_bound)
-    #     a = 1
-    #   elif self.clip_mode == "norm":
-    #     clipped = []
-    #     for g in gradients:
-    #       if isinstance(g, tf.IndexedSlices):
-    #         c_g = tf.clip_by_norm(g.values, self.grad_bound)
-    #         c_g = tf.IndexedSlices(g.indices, c_g)
-    #       else:
-    #         c_g = tf.clip_by_norm(g, self.grad_bound)
-    #       clipped.append(c_g)
-    #     gradients = clipped
-    #   else:
-    #     raise NotImplementedError("Unknown clip_mode {}".format(self.clip_mode))
-
-    # if get_grad_norms:
-    #   g_1, g_2 = 0.0001, 0.0001
-    #   for v, g in zip(tf_variables, grads):
-    #     if g is not None:
-    #       if isinstance(g, tf.IndexedSlices):
-    #         g_n = tf.reduce_sum(g.values ** 2)
-    #       else:
-    #         g_n = tf.reduce_sum(g ** 2)
-    #       if "enas_cell" in v.name:
-    #         print("g_1: {}".format(v.name))
-    #         g_1 += g_n
-    #       else:
-    #         print("g_2: {}".format(v.name))
-    #         g_2 += g_n
-    #   learning_rate = tf.Print(learning_rate, [g_1, g_2, tf.sqrt(g_1 / g_2)],
-    #                            message="g_1, g_2, g_1/g_2: ", summarize=5)
-
-    # self.learning_rate = self.lr_schedule(self.curr_step)
-    # if self.lr_dec_min is not None:
-    #   self.learning_rate = tf.maximum(self.learning_rate, self.lr_dec_min)
-
     self.opt.apply_gradients(zip(gradients, self.trainable_variables))
 
   def eval_controller(self, child_model):
-    self._build_sampler()  # 更新下sample_arc   TODO 可设置mode，避免entropy与log_prob的云萨un
-    self.eval_acc = child_model._build_valid(self.sample_arc)  # TODO 为什么原enas用build_valid_rl，有什么不同
+    self._build_sampler()  # 更新下sample_arc
+    self.eval_acc = child_model._build_valid(self.sample_arc)
     return self.sample_arc

@@ -104,7 +104,6 @@ class GeneralChild(Model):
 
     if self.optim_algo == "momentum":
       self.opt = tf.keras.optimizers.RMSprop(learning_rate=self.lr_schedule, momentum=0.9)
-      # tf.compat.v1.train.MomentumOptimizer(self.lr_schedule, 0.9, use_locking=True, use_nesterov=True)
     elif self.optim_algo  == "sgd":
       self.opt = tf.keras.optimizers.SGD(learning_rate=self.lr_schedule, momentum=0.9)
     elif self.optim_algo  == "adam":
@@ -587,7 +586,6 @@ class GeneralChild(Model):
 
     size = [3, 3, 5, 5]
     filter_size = size[id]
-    # if scope+"_inp_conv_1_w" not in self.weight.keys() and is_training:
     scopetmp = scope+"/inp_conv_1"
     w = self.weight[scopetmp+"/w"]
     x = tf.nn.conv2d(inputs, w, [1, 1, 1, 1], "SAME", data_format=self.data_format)
@@ -613,8 +611,6 @@ class GeneralChild(Model):
         scope0 = scope + "/separable_conv"
         w_depth = self.weight[scope0 + "/w_depth"]
         w_point = self.weight[scope0 + "/w_point"]
-        # w_point = w_point[start_idx:start_idx+count, :]
-        # w_point = tf.transpose(w_point, [1, 0])
         w_point = tf.reshape(w_point, [1, 1, out_filters * ch_mul, count])
 
         x = tf.nn.separable_conv2d(x, w_depth, w_point, strides=[1, 1, 1, 1],
@@ -717,53 +713,29 @@ class GeneralChild(Model):
 
   # override
   def _build_train(self, img, label, step):
-    # print("-" * 80)
-    # print("Build train graph")
     self.curr_step = step
     with tf.GradientTape() as tape:
       tape.watch(self.variables)
-      timetmp = time.time()
       logits = self._model(img, is_training=True)
-      endtime = time.time() - timetmp
       log_probs = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=label)
       self.loss = tf.reduce_mean(log_probs)
-      # dd = tape.gradient(self.loss, self.trainable_variables)
-      timetmp = time.time()
       self.backward(tape)
-      endtime2 = time.time() - timetmp
+
     train_preds = tf.argmax(logits, axis=1)
     train_preds = tf.cast(train_preds, dtype=tf.int32)
     self.train_acc = tf.equal(train_preds, label)
     self.train_acc = tf.cast(self.train_acc, dtype=tf.int32)
     self.train_acc = tf.reduce_sum(self.train_acc)
 
-    # tf_variables = [var
-    #     for var in self.trainable_variables() if var.name.startswith(self.name)]
-    # self.num_vars = count_model_params(tf_variables)
-    # print("Model has {} params".format(self.num_vars))
-
   def backward(self, tape, step=0):
-    timetmp = time.time()
     if self.l2_reg > 0:
       l2_losses = []
       for var in self.trainable_variables:
         l2_losses.append(tf.reduce_sum(var ** 2))
       l2_loss = tf.add_n(l2_losses)
       self.loss += self.l2_reg * l2_loss
-      endtime1 = time.time() - timetmp
-    timetmp = time.time()
-    grads = tape.gradient(self.loss, self.trainable_variables)
-    endtime2 = time.time() - timetmp
-    # grad_norm = tf.linalg.global_norm(grads)
 
-    # grad_norms = {}
-    # for v, g in zip(self.trainable_variables, grads):
-    #   if v is None or g is None:
-    #     continue
-    #   if isinstance(g, tf.IndexedSlices):
-    #     grad_norms[v.name] = tf.sqrt(tf.reduce_sum(g.values ** 2))
-    #   else:
-    #     grad_norms[v.name] = tf.sqrt(tf.reduce_sum(g ** 2))
+    grads = tape.gradient(self.loss, self.trainable_variables)
 
     self.grad_norm = tf.linalg.global_norm(grads)
     # if self.clip_mode is not None:
@@ -785,81 +757,9 @@ class GeneralChild(Model):
     #   else:
     #     raise NotImplementedError("Unknown clip_mode {}".format(self.clip_mode))
 
-    # if self.lr_cosine:
-    #   assert self.lr_max is not None, "Need lr_max to use lr_cosine"
-    #   assert self.lr_min is not None, "Need lr_min to use lr_cosine"
-    #   assert self.lr_T_0 is not None, "Need lr_T_0 to use lr_cosine"
-    #   assert self.lr_T_mul is not None, "Need lr_T_mul to use lr_cosine"
-    #   assert self.num_train_batches is not None, ("Need num_train_batches to use"
-    #                                          " lr_cosine")
-    #
-    #   curr_epoch = self.curr_step // self.num_train_batches
-    #
-    #   last_reset = tf.Variable(0, dtype=tf.int32, trainable=False,
-    #                            name="last_reset")
-    #   T_i = tf.Variable(lr_T_0, dtype=tf.int32, trainable=False, name="T_i")
-    #   T_curr = curr_epoch - last_reset
-    #
-    #   def _update():
-    #     update_last_reset = tf.assign(last_reset, curr_epoch, use_locking=True)
-    #     update_T_i = tf.assign(T_i, T_i * lr_T_mul, use_locking=True)
-    #     with tf.control_dependencies([update_last_reset, update_T_i]):
-    #       rate = tf.to_float(T_curr) / tf.to_float(T_i) * 3.1415926
-    #       lr = lr_min + 0.5 * (lr_max - lr_min) * (1.0 + tf.cos(rate))
-    #     return lr
-    #
-    #   def _no_update():
-    #     rate = tf.to_float(T_curr) / tf.to_float(T_i) * 3.1415926
-    #     lr = lr_min + 0.5 * (lr_max - lr_min) * (1.0 + tf.cos(rate))
-    #     return lr
-    #
-    #   learning_rate = tf.cond(
-    #     tf.greater_equal(T_curr, T_i), _update, _no_update)
-    # else:
-
     self.learning_rate = self.lr_schedule(self.curr_step)
-    # if self.lr_dec_min is not None:
-    #   self.learning_rate = tf.maximum(self.learning_rate, self.lr_dec_min)
-
-    # if self.lr_warmup_val is not None:
-    #   learning_rate = tf.cond(tf.less(train_step, lr_warmup_steps),
-    #                           lambda: lr_warmup_val, lambda: learning_rate)
-    # if get_grad_norms:
-    #   g_1, g_2 = 0.0001, 0.0001
-    #   for v, g in zip(tf_variables, grads):
-    #     if g is not None:
-    #       if isinstance(g, tf.IndexedSlices):
-    #         g_n = tf.reduce_sum(g.values ** 2)
-    #       else:
-    #         g_n = tf.reduce_sum(g ** 2)
-    #       if "enas_cell" in v.name:
-    #         print("g_1: {}".format(v.name))
-    #         g_1 += g_n
-    #       else:
-    #         print("g_2: {}".format(v.name))
-    #         g_2 += g_n
-    #   learning_rate = tf.Print(learning_rate, [g_1, g_2, tf.sqrt(g_1 / g_2)],
-    #                            message="g_1, g_2, g_1/g_2: ", summarize=5)
-
-    # if self.sync_replicas:
-    #   assert self.num_aggregate is not None, "Need num_aggregate to sync."
-    #   assert self.num_replicas is not None, "Need num_replicas to sync."
-    #
-    #   self.opt = tf.train.SyncReplicasOptimizer(
-    #     self.opt,
-    #     replicas_to_aggregate=self.num_aggregate,
-    #     total_num_replicas=self.num_replicas,
-    #     use_locking=True)
-
-    # if self.moving_average is not None:
-    #   self.opt = tf.contrib.opt.MovingAverageOptimizer(
-    #     self.opt, average_decay=self.moving_average)
-
     self.opt.apply_gradients(zip(grads, self.trainable_variables))
 
-    # if self.get_grad_norms:
-    #   return train_op, learning_rate, grad_norm, opt, grad_norms
-    # else:
 
   # override
   def _build_valid(self, sample_arc):
@@ -879,8 +779,6 @@ class GeneralChild(Model):
 
   # override
   def _build_test(self):
-    # print("-" * 80)
-    # print("Build test graph")
     logits = self._model(self.x_test, False)
     self.test_preds = tf.argmax(logits, axis=1)
     self.test_preds = tf.to_int32(self.test_preds)

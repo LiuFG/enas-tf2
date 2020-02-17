@@ -205,16 +205,10 @@ def train():
     # plt.show()
     step = count   # + epoch * child_model.num_train_batches
     epoch = step // child_model.num_train_batches
-    timetmp = time.time()
-    if step % 1 == 0:
-      sample_arc = controller_model._build_sampler()
-      # print(sample_arc)
-      endtime = time.time() - timetmp
-      child_model.connect_controller_arc(sample_arc)
 
-    timetmp = time.time()
+    sample_arc = controller_model._build_sampler()
+    child_model.connect_controller_arc(sample_arc)
     child_model._build_train(img, label, step)
-    endtime3 = time.time() - timetmp
 
     curr_time = time.time()
     if step % FLAGS.child_train_log_every == 0:
