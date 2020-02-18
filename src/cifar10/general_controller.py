@@ -301,8 +301,8 @@ class GeneralController(tf.Module):
         self.reward += self.entropy_weight * self.sample_entropy
 
       self.sample_log_prob = tf.reduce_sum(self.sample_log_prob)
-      self.loss = self.sample_log_prob * (self.reward - self.baseline)
       self.baseline.assign_sub((1 - self.bl_dec) * (self.baseline - self.reward))
+      self.loss = self.sample_log_prob * (self.reward - self.baseline)
 
       if self.skip_weight is not None:
         self.loss += self.skip_weight * self.skip_penaltys
