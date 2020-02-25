@@ -45,6 +45,8 @@ taking same metric as official version in macro search space
 
 70% valid_acc after 100 epoch 
 
+![](./figure/macro_result.png)
+
 ### micro
 
 
