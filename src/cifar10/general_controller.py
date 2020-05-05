@@ -136,7 +136,7 @@ class GeneralController(tf.Module):
                                 name="attention_w2")
     self.v_attn = tf.Variable(initializer([self.lstm_size, 1]), name="attention_v")
 
-  def _build_sampler(self):
+  def _build_sampler(self, training=True):
     """Build the sampler ops and the log_prob ops."""
     # print("-" * 80)
     # print("Build controller sampler")
@@ -179,11 +179,12 @@ class GeneralController(tf.Module):
         else:
           raise ValueError("Unknown search_for {}".format(self.search_for))
         arc_seq.append(branch_id)
-        log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(
-          logits=logit, labels=branch_id)  # 计算选中branch_id的概率
-        log_probs.append(log_prob)
-        entropy = tf.stop_gradient(log_prob * tf.exp(-log_prob))
-        entropys.append(entropy)   # 可作为reward的一部分
+        if training:
+          log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits=logit, labels=branch_id)  # 计算选中branch_id的概率
+          log_probs.append(log_prob)
+          entropy = tf.stop_gradient(log_prob * tf.exp(-log_prob))
+          entropys.append(entropy)   # 可作为reward的一部分
         inputs = tf.nn.embedding_lookup(self.w_emb, branch_id)  # embedding
       else:
         for branch_id in range(0, self.num_branches):
@@ -245,18 +246,19 @@ class GeneralController(tf.Module):
         skip = tf.reshape(skip, [layer_id])  # TODO 直接展成layer_id个0/1？
         arc_seq.append(skip)
 
-        skip_prob = tf.sigmoid(logit)
-        kl = skip_prob * tf.math.log(skip_prob / skip_targets)
-        kl = tf.reduce_sum(kl)
-        skip_penaltys.append(kl)
+        if training:
+          skip_prob = tf.sigmoid(logit)
+          kl = skip_prob * tf.math.log(skip_prob / skip_targets)
+          kl = tf.reduce_sum(kl)
+          skip_penaltys.append(kl)
 
-        log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(
-          logits=logit, labels=skip)
-        log_probs.append(tf.reduce_sum(log_prob, keepdims=True))
+          log_prob = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits=logit, labels=skip)
+          log_probs.append(tf.reduce_sum(log_prob, keepdims=True))
 
-        entropy = tf.stop_gradient(
-          tf.reduce_sum(log_prob * tf.exp(-log_prob), keepdims=True))
-        entropys.append(entropy)
+          entropy = tf.stop_gradient(
+            tf.reduce_sum(log_prob * tf.exp(-log_prob), keepdims=True))
+          entropys.append(entropy)
 
         skip = tf.cast(skip, dtype=tf.float32)
         skip = tf.reshape(skip, [1, layer_id])   # 前几个是否skip
@@ -272,17 +274,18 @@ class GeneralController(tf.Module):
     arc_seq = tf.concat(arc_seq, axis=0)
     self.sample_arc = tf.reshape(arc_seq, [-1])
 
-    entropys = tf.stack(entropys)
-    self.sample_entropy = tf.reduce_sum(entropys)
+    if training:
+      entropys = tf.stack(entropys)
+      self.sample_entropy = tf.reduce_sum(entropys)
 
-    log_probs = tf.stack(log_probs)
-    self.sample_log_prob = tf.reduce_sum(log_probs)
+      log_probs = tf.stack(log_probs)
+      self.sample_log_prob = tf.reduce_sum(log_probs)
 
-    skip_count = tf.stack(skip_count)
-    self.skip_count = tf.reduce_sum(skip_count)
+      skip_count = tf.stack(skip_count)
+      self.skip_count = tf.reduce_sum(skip_count)
 
-    skip_penaltys = tf.stack(skip_penaltys)
-    self.skip_penaltys = tf.reduce_mean(skip_penaltys)
+      skip_penaltys = tf.stack(skip_penaltys)
+      self.skip_penaltys = tf.reduce_mean(skip_penaltys)
     return self.sample_arc
 
   def build_trainer(self, child_model, ct_step):

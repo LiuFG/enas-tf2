@@ -4,21 +4,18 @@ Tensorflow2.0 implementation of [Efficient Neural Architecture Search via Parame
 
 **TF1\.\*  implementation (official code) can be  taken from the  [link](https://github.com/melodyguan/enas)**
 
-## Finished
-
-macro search 
-
 ## STILL DEVELOPING
 
-- micro search
-- BN infer case
-- low GPU-util(slow training)
-- fixed_arc training
-- aux_heads
-- lr_cosine
-- test data
-- multi gpu
-- save model_param
+- [x] macro search 
+- [ ] micro search
+- [ ] BN infer case
+- [ ] low GPU-util(slow training)
+- [ ] fixed_arc training
+- [ ] aux_heads
+- [ ] lr_cosine
+- [ ] test data
+- [ ] multi gpu
+- [ ] save model weights
 
 ## Prerequisites
 
