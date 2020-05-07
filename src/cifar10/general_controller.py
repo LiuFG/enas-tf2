@@ -143,22 +143,23 @@ class GeneralController(tf.Module):
     if self.create_para_do:
       self._create_params()
       self.create_para_do = False
+
     anchors = []
     anchors_w_1 = []
-
     arc_seq = []
-    entropys = []
-    log_probs = []
-    skip_count = []
-    skip_penaltys = []
 
     prev_c = [tf.zeros([1, self.lstm_size], tf.float32) for _ in
               range(0, self.lstm_num_layers)]
     prev_h = [tf.zeros([1, self.lstm_size], tf.float32) for _ in
               range(0, self.lstm_num_layers)]
     inputs = self.g_emb
-    skip_targets = tf.constant([1.0 - self.skip_target, self.skip_target],
-                               dtype=tf.float32)
+    if training:
+      entropys = []
+      log_probs = []
+      skip_count = []
+      skip_penaltys = []
+      skip_targets = tf.constant([1.0 - self.skip_target, self.skip_target],
+                                 dtype=tf.float32)
 
     for layer_id in range(0, self.num_layers):
       if self.search_whole_channels:
@@ -186,6 +187,7 @@ class GeneralController(tf.Module):
           entropy = tf.stop_gradient(log_prob * tf.exp(-log_prob))
           entropys.append(entropy)   # 可作为reward的一部分
         inputs = tf.nn.embedding_lookup(self.w_emb, branch_id)  # embedding
+        # TODO cpu
       else:
         for branch_id in range(0, self.num_branches):
           next_c, next_h = stack_lstm(inputs, prev_c, prev_h, self.w_lstm)
@@ -262,7 +264,8 @@ class GeneralController(tf.Module):
 
         skip = tf.cast(skip, dtype=tf.float32)
         skip = tf.reshape(skip, [1, layer_id])   # 前几个是否skip
-        skip_count.append(tf.reduce_sum(skip))
+        if training:
+          skip_count.append(tf.reduce_sum(skip))
         inputs = tf.matmul(skip, tf.concat(anchors, axis=0))
         inputs /= (1.0 + tf.reduce_sum(skip))
       else:
@@ -309,27 +312,25 @@ class GeneralController(tf.Module):
 
       if self.skip_weight is not None:
         self.loss += self.skip_weight * self.skip_penaltys
+      if self.l2_reg > 0:
+        l2_losses = []
+        for var in self.trainable_variables:
+          l2_losses.append(tf.reduce_sum(var ** 2))
+        l2_loss = tf.add_n(l2_losses)
+        self.loss += self.l2_reg * l2_loss
+    # compute gradients and update variables
+    gradients = tape.gradient(self.loss, self.trainable_variables)
+    self.backward(gradients)
 
-      self.backward(tape)
-
-  def backward(self, tape, step=0):
+  def backward(self, gradients, step=0):
     """
     Args:
       clip_mode: "global", "norm", or None.
       moving_average: store the moving average of parameters
     """
-    if self.l2_reg > 0:
-      l2_losses = []
-      for var in self.trainable_variables:
-        l2_losses.append(tf.reduce_sum(var ** 2))
-      l2_loss = tf.add_n(l2_losses)
-      self.loss += self.l2_reg * l2_loss
-
-    # compute gradients and update variables
-    gradients = tape.gradient(self.loss, self.trainable_variables)
     self.opt.apply_gradients(zip(gradients, self.trainable_variables))
 
   def eval_controller(self, child_model):
-    self._build_sampler()  # 更新下sample_arc
+    self._build_sampler(training=False)  # 更新下sample_arc
     self.eval_acc = child_model._build_valid(self.sample_arc)
     return self.sample_arc

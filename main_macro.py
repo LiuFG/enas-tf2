@@ -30,11 +30,11 @@ tf.get_logger().setLevel('ERROR')
 parser = argparse.ArgumentParser(description='enas')
 parser.add_argument('--reset_output_dir', default=True,
                     help='Delete output_dir if exists')  # action='store_true'
-parser.add_argument('--data_path', default="/home/liufg/data/cifar/cifar10", help='')
-parser.add_argument('--output_dir', default="./output/enas_tf2", help='')  # TODO
+parser.add_argument('--data_path', default="/home/liufg/data/cifar/cifar-10-batches-py", help='')
+parser.add_argument('--output_dir', default="./output/test", help='')  # TODO
 parser.add_argument('--data_format', default="NCHW", help=" 'NHWC' or 'NCWH'")
 parser.add_argument('--search_for', default="macro", help=" Must be [macro|micro]")
-parser.add_argument('--train_batch_size', type=int, default=128, metavar='batch_size', help='')  # TODO
+parser.add_argument('--train_batch_size', type=int, default=256, metavar='batch_size', help='')  # TODO
 parser.add_argument('--eval_batch_size', type=int, default=128, metavar='batch_size', help='')  # TODO
 parser.add_argument('--num_epochs', type=int, default=300, metavar='num_epochs', help='')
 parser.add_argument('--eval_every_epochs', type=int, default=1, help='How many epochs to eval')  # TODO
@@ -52,10 +52,10 @@ parser.add_argument('--child_num_cell_layers', type=int, default=5, help='')
 parser.add_argument('--child_cutout_size', type=int, default=None, help='CutOut size')
 parser.add_argument('--child_keep_prob', type=float, default=0.90, help='')
 parser.add_argument('--child_optim', default="adam", help='momentum/sgd/adam')
-parser.add_argument('--child_train_log_every', type=int, default=50, help='How many steps to log')
+parser.add_argument('--child_train_log_every', type=int, default=100, help='How many steps to log')
 # ---------- decay lr -----------
 parser.add_argument('--child_lr_dec_every', type=int, default=100, help='')
-parser.add_argument('--child_lr_dec_rate', type=float, default=0.1, help='')
+parser.add_argument('--child_lr_dec_rate', type=float, default=0.25, help='')
 parser.add_argument('--child_lr', type=float, default=0.002, help='')  # TODO
 # ---------- cosine lr ----------
 parser.add_argument('--child_lr_cosine', default=False, help='Use cosine lr schedule')
@@ -137,7 +137,7 @@ def get_ops():
     data_format=FLAGS.data_format,
     train_batch_size=FLAGS.train_batch_size,
     eval_batch_size=FLAGS.eval_batch_size,
-    clip_mode="norm",
+    clip_mode=FLAGS.child_clip_mode,
     grad_bound=FLAGS.child_grad_bound,
     lr_init=FLAGS.child_lr,
     lr_dec_every=FLAGS.child_lr_dec_every,
@@ -199,33 +199,38 @@ def train():
 
   print("-" * 80)
   print("Starting train loop")
+  step_eval_every = child_model.num_train_batches * FLAGS.eval_every_epochs
   start_time = time.time()
   for count, (img, label) in enumerate(child_model.train_dataloader):
     # plt.imshow(np.transpose(img[1], [1,2,0]))
     # plt.show()
     step = count   # + epoch * child_model.num_train_batches
     epoch = step // child_model.num_train_batches
+    log_flag = step % FLAGS.child_train_log_every == 0
 
-    sample_arc = controller_model._build_sampler()
+    start_build_sampler = time.time()
+    sample_arc = controller_model._build_sampler(training=False)
+    end = time.time() - start_build_sampler
+    start_train = time.time()
     child_model.connect_controller_arc(sample_arc)
-    child_model._build_train(img, label, step)
-
+    child_model._build_train(img, label, step, log_flag)
+    end2 = time.time() - start_train
     curr_time = time.time()
-    if step % FLAGS.child_train_log_every == 0:
+    if log_flag:
       with writer.as_default():
         tf.summary.scalar('child_train_loss', data=child_model.loss, step=step)
-        tf.summary.scalar('child_train_acc', data=child_model.train_acc/128, step=step)
+        tf.summary.scalar('child_train_acc', data=child_model.train_acc/ FLAGS.train_batch_size,
+                          step=step)
       log_string = ""
       log_string += "epoch={:<6d}".format(epoch)
       log_string += "ch_step={:<6d}".format(step)
       log_string += " loss={:<8.6f}".format(child_model.loss)
-      log_string += " lr={:<8.4f}".format(child_model.learning_rate)
+      log_string += " lr={:<8.6f}".format(child_model.learning_rate)
       log_string += " |g|={:<8.4f}".format(child_model.grad_norm)
       log_string += " tr_acc={:<3d}/{:>3d}".format(child_model.train_acc, FLAGS.train_batch_size)
       log_string += " mins={:<10.2f}".format(float(curr_time - start_time) / 60)
       print(log_string)
     # ================== controller_train & eval acc ==================================
-    step_eval_every = child_model.num_train_batches * FLAGS.eval_every_epochs
     if (step + 1) % step_eval_every == 0:
       if (FLAGS.controller_training and (epoch+1) % FLAGS.controller_train_every == 0):
         print("Epoch {}: Training controller".format(epoch))

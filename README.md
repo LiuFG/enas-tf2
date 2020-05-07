@@ -4,12 +4,28 @@ Tensorflow2.0 implementation of [Efficient Neural Architecture Search via Parame
 
 **TF1\.\*  implementation (official code) can be  taken from the  [link](https://github.com/melodyguan/enas)**
 
+## Results
+
+### macro
+#### search
+whole searching phase(300 epochs) needs ~5 hours with 1024 batch-size on Titan RTX 24G
+> if 256 batch-size, it needs ~10 hours
+
+- 1024 batch-size result: 
+    - train acc
+      ![](./figure/macro-tracc.png)
+    - eval acc
+      ![](./figure/macro-evalacc.png)
+#### retrain
+
+
 ## STILL DEVELOPING
 
 - [x] macro search 
+- [ ] not search_whole_channels
+- [x] low GPU-util while searching(solution:increase batch-size)
 - [ ] micro search
 - [ ] BN infer case
-- [ ] low GPU-util(slow training)
 - [ ] fixed_arc training
 - [ ] aux_heads
 - [ ] lr_cosine
@@ -28,25 +44,10 @@ Tensorflow2.0 implementation of [Efficient Neural Architecture Search via Parame
 ### macro
 
 - run main_macro.py directly
-- run ./scripts/cifar10_macro_search.sh
 
 ### micro
 
-
-
-## Results
-
-### macro
-
-taking same metric as official version in macro search space
-
-70% valid_acc after 100 epoch 
-
-![](./figure/macro_result.png)
-
-### micro
-
-
+None
 
 ## Reference
 

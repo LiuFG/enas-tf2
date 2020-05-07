@@ -409,6 +409,7 @@ class GeneralChild(Model):
       res_layers = []
       for i in range(layer_id):
         if skip[i] == 1:
+          # out += prev_layers[i]
           res_layers.append(prev_layers[i])  #TODO +1
       res_layers.append(out)
       out = tf.add_n(res_layers)   # 所有相加
@@ -712,50 +713,48 @@ class GeneralChild(Model):
     return x
 
   # override
-  def _build_train(self, img, label, step):
+  def _build_train(self, img, label, step, log_flag):
     self.curr_step = step
     with tf.GradientTape() as tape:
-      tape.watch(self.variables)
+      # tape.watch(self.trainable_variables)
       logits = self._model(img, is_training=True)
       log_probs = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=label)
       self.loss = tf.reduce_mean(log_probs)
-      self.backward(tape)
-
-    train_preds = tf.argmax(logits, axis=1)
-    train_preds = tf.cast(train_preds, dtype=tf.int32)
-    self.train_acc = tf.equal(train_preds, label)
-    self.train_acc = tf.cast(self.train_acc, dtype=tf.int32)
-    self.train_acc = tf.reduce_sum(self.train_acc)
-
-  def backward(self, tape, step=0):
-    if self.l2_reg > 0:
-      l2_losses = []
-      for var in self.trainable_variables:
-        l2_losses.append(tf.reduce_sum(var ** 2))
-      l2_loss = tf.add_n(l2_losses)
-      self.loss += self.l2_reg * l2_loss
-
+      if self.l2_reg > 0:
+        l2_losses = []
+        for var in self.trainable_variables:
+          l2_losses.append(tf.reduce_sum(var ** 2))
+        l2_loss = tf.add_n(l2_losses)
+        self.loss += self.l2_reg * l2_loss
     grads = tape.gradient(self.loss, self.trainable_variables)
+    self.backward(grads)
+    if log_flag:
+      train_preds = tf.argmax(logits, axis=1)
+      train_preds = tf.cast(train_preds, dtype=tf.int32)
+      self.train_acc = tf.equal(train_preds, label)
+      self.train_acc = tf.cast(self.train_acc, dtype=tf.int32)
+      self.train_acc = tf.reduce_sum(self.train_acc)
 
+  def backward(self, grads, step=0):
     self.grad_norm = tf.linalg.global_norm(grads)
-    # if self.clip_mode is not None:
-    #   assert self.grad_bound is not None, "Need grad_bound to clip gradients."
-    #   if self.clip_mode == "global":
-    #     grads, _ = tf.clip_by_global_norm(grads, self.grad_bound)
-    #   elif self.clip_mode == "norm":
-    #     clipped = []
-    #     for g in grads:
-    #       if g is None:
-    #           continue
-    #       if isinstance(g, tf.IndexedSlices):
-    #         c_g = tf.clip_by_norm(g.values, self.grad_bound)
-    #         c_g = tf.IndexedSlices(g.indices, c_g)
-    #       else:
-    #         c_g = tf.clip_by_norm(g, self.grad_bound)
-    #       clipped.append(c_g)
-    #     grads = clipped
-    #   else:
-    #     raise NotImplementedError("Unknown clip_mode {}".format(self.clip_mode))
+    if self.clip_mode is not None:
+      assert self.grad_bound is not None, "Need grad_bound to clip gradients."
+      if self.clip_mode == "global":
+        grads, _ = tf.clip_by_global_norm(grads, self.grad_bound)
+      elif self.clip_mode == "norm":
+        clipped = []
+        for g in grads:
+          if g is None:
+              continue
+          if isinstance(g, tf.IndexedSlices):
+            c_g = tf.clip_by_norm(g.values, self.grad_bound)
+            c_g = tf.IndexedSlices(g.indices, c_g)
+          else:
+            c_g = tf.clip_by_norm(g, self.grad_bound)
+          clipped.append(c_g)
+        grads = clipped
+      else:
+        raise NotImplementedError("Unknown clip_mode {}".format(self.clip_mode))
 
     self.learning_rate = self.lr_schedule(self.curr_step)
     self.opt.apply_gradients(zip(grads, self.trainable_variables))
@@ -765,14 +764,14 @@ class GeneralChild(Model):
   def _build_valid(self, sample_arc):
     self.sample_arc = sample_arc
     valid_acc_list = []
-    for count, (img, label) in enumerate(self.valid_dataloader):  # 原代碼好像只valid一個batch
+    for count, (img, label) in enumerate(self.valid_dataloader):
       logits = self._model(img, False)
       valid_preds = tf.argmax(logits, axis=1)
       valid_preds = tf.cast(valid_preds, dtype=tf.int32)
       valid_acc = tf.equal(valid_preds, label)
       valid_acc = tf.cast(valid_acc, dtype=tf.int32)
       valid_acc = tf.reduce_sum(valid_acc)
-      valid_acc_list.append(valid_acc/128)
+      valid_acc_list.append(valid_acc/2500)
       if count > self.num_valid_batches-2:
         break
     return tf.reduce_mean(valid_acc_list)

@@ -8,9 +8,6 @@ python main_macro.py \
   --reset_output_dir=True \
   --data_path="/home/liufg/data/cifar/cifar10" \
   --output_dir="outputs" \
-  --train_batch_size=128 \
-  --eval_batch_size=128 \
-  --num_epochs=310 \
   --child_train_log_every=50 \
   --eval_every_epochs=1 \
   --child_use_aux_heads=Fasle \

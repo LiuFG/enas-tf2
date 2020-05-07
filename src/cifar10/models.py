@@ -76,12 +76,12 @@ class Model(tf.Module):
 
     if images["valid"] is not None:
       self.num_valid_examples = np.shape(images["valid"])[0]
-      self.num_valid_batches = ((self.num_valid_examples + self.eval_batch_size - 1) // self.eval_batch_size)
       self.valid_shuffle_dataloader = self.create_loader((images['valid'], labels['valid']),
                                                  self.num_valid_examples, self.eval_batch_size)
 
       self.valid_dataloader = self.create_loader((images['valid'], labels['valid']),
-                                            self.num_valid_examples, self.eval_batch_size, shuffle=False)
+                                            self.num_valid_examples, 2500, shuffle=False)
+      self.num_valid_batches = ((self.num_valid_examples + 2500 - 1) // 2500)
     # if self.data_format == "NCHW":
     #   images["test"] = np.transpose(images["test"], [0, 3, 1, 2])
     # self.num_test_examples = np.shape(images["test"])[0]

@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-
+# @tf.function
 def lstm(x, prev_c, prev_h, w):
   ifog = tf.matmul(tf.concat([x, prev_h], axis=1), w)
   i, f, o, g = tf.split(ifog, 4, axis=1)
