@@ -6,8 +6,7 @@ Tensorflow2.0 implementation of [Efficient Neural Architecture Search via Parame
 
 ## Results
 
-### macro
-#### search
+### macro search
 whole searching phase(300 epochs) needs ~5 hours with 1024 batch-size on Titan RTX 24G
 > if 256 batch-size, it needs ~10 hours
 
@@ -16,8 +15,8 @@ whole searching phase(300 epochs) needs ~5 hours with 1024 batch-size on Titan R
       ![](./figure/macro-tracc.png)
     - eval acc
       ![](./figure/macro-evalacc.png)
-#### retrain
-
+### macro retrain
+None
 
 ## STILL DEVELOPING
 
